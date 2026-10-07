@@ -1,0 +1,6 @@
+{
+  "name": "ParkControl - Parking Central",
+  "description": "Enterprise Parking Management System for vehicle entry, exit, slot management, and parking history.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+  }
+  
+  body {
+    background: #f5f4fb;
+    color: #222;
+    min-height: 100vh;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #c7c7cc;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9fa0a5;
+}
+
+/* Slot Card styling */
+.slot-card {
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
+}
+.slot-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+.slot-selected {
+  border-width: 2px !important;
+  border-style: dashed !important;
+  outline: 2px solid #4f46e5 !important;
+  outline-offset: 2px !important;
+}
+
+/* Conic gradient for capacity progress */
+.progress-circle {
+  transition: background 0.4s ease;
+}
