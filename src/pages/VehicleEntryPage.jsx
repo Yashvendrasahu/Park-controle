@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.jsx';
+import EntryPassModal from '../components/EntryPassModal.jsx';
 
 export default function VehicleEntryPage() {
   const { slots, records, addVehicle, totalSlots, occupiedSlots, availableSlots, setCurrentPage } = useParking();
@@ -10,6 +11,7 @@ export default function VehicleEntryPage() {
   const [slotId, setSlotId] = useState('');
   const [currentTime, setCurrentTime] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdPass, setCreatedPass] = useState(null);
 
   // Live timer
   useEffect(() => {
@@ -40,7 +42,7 @@ export default function VehicleEntryPage() {
     }
 
     setIsSubmitting(true);
-    await addVehicle({
+    const res = await addVehicle({
       vehicleNo,
       vehicleType,
       ownerName,
@@ -48,7 +50,10 @@ export default function VehicleEntryPage() {
     });
     setIsSubmitting(false);
 
-    alert('Vehicle Entry Added Successfully');
+    if (res.record) {
+      setCreatedPass(res.record);
+    }
+
     setVehicleNo('');
     setOwnerName('');
     setSlotId('');
@@ -62,10 +67,13 @@ export default function VehicleEntryPage() {
           Parking Central
         </h1>
         <div className="flex items-center gap-5">
-          <button className="text-gray-600 hover:text-[#4338ca] text-xl">
+          <button className="text-gray-600 hover:text-[#4338ca] text-xl cursor-pointer">
             <i className="fa-regular fa-bell"></i>
           </button>
-          <button className="text-gray-600 hover:text-[#4338ca] text-xl">
+          <button
+            onClick={() => setCurrentPage('slot_mange')}
+            className="text-gray-600 hover:text-[#4338ca] text-xl cursor-pointer"
+          >
             <i className="fa-solid fa-gear"></i>
           </button>
           <img
@@ -89,7 +97,7 @@ export default function VehicleEntryPage() {
             New Vehicle Entry
           </h2>
           <p className="text-gray-500 text-[15px] mb-7">
-            Register the vehicle and assign an available parking slot.
+            Register the vehicle, assign an available slot, and issue an official gate entry pass.
           </p>
 
           <div className="mb-5">
@@ -198,7 +206,7 @@ export default function VehicleEntryPage() {
             className="w-full bg-[#4338ca] hover:bg-[#312e81] text-white py-4.5 rounded-[18px] text-[18px] font-bold transition duration-200 cursor-pointer flex items-center justify-center gap-2.5 shadow-lg shadow-indigo-100 disabled:opacity-50"
           >
             <i className="fa-regular fa-square-check text-xl"></i>
-            <span>{isSubmitting ? 'Assigning...' : 'Assign Slot'}</span>
+            <span>{isSubmitting ? 'Assigning & Generating Ticket...' : 'Assign Slot & Issue Pass'}</span>
           </button>
         </div>
 
@@ -270,7 +278,7 @@ export default function VehicleEntryPage() {
                 <th className="p-4">OWNER</th>
                 <th className="p-4">ENTRY TIME</th>
                 <th className="p-4">SLOT</th>
-                <th className="p-4 rounded-r-lg">STATUS</th>
+                <th className="p-4 rounded-r-lg">ACTION</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-sm">
@@ -293,9 +301,12 @@ export default function VehicleEntryPage() {
                       {item.slots?.slot_number || item.slot_id || '-'}
                     </td>
                     <td className="p-4">
-                      <span className="bg-[#dcfce7] text-[#16a34a] font-bold text-xs px-3 py-1 rounded-full uppercase">
-                        PARKED
-                      </span>
+                      <button
+                        onClick={() => setCreatedPass(item)}
+                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <i className="fa-solid fa-ticket"></i> View Pass
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -304,6 +315,13 @@ export default function VehicleEntryPage() {
           </table>
         </div>
       </div>
+
+      {/* Entry Ticket Modal */}
+      <EntryPassModal
+        isOpen={Boolean(createdPass)}
+        onClose={() => setCreatedPass(null)}
+        record={createdPass}
+      />
     </div>
   );
 }

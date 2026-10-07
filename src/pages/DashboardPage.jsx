@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.jsx';
 import NewEntryModal from '../components/NewEntryModal.jsx';
+import RecordDetailsModal from '../components/RecordDetailsModal.jsx';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -28,28 +29,62 @@ export default function DashboardPage() {
     totalVehicles,
     totalEarnings,
     activeRecords,
-    completedRecords,
     occupancyPercentage,
     setCurrentPage,
   } = useParking();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [selectedRecordForDetail, setSelectedRecordForDetail] = useState(null);
   const [activeChartTab, setActiveChartTab] = useState('flow'); // 'flow' | 'zones' | 'types'
+  const searchContainerRef = useRef(null);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setIsSearchFocused(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Global search matching both active and complete history records
+  const matchedHistoryRecords = useMemo(() => {
+    if (!searchTerm.trim()) return [];
+    const query = searchTerm.toLowerCase().trim();
+    return records.filter((rec) => {
+      const veh = (rec.vehicle_no || '').toLowerCase();
+      const slotNum = (rec.slots?.slot_number || String(rec.slot_id) || '').toLowerCase();
+      const owner = (rec.owner_name || '').toLowerCase();
+      const type = (rec.vehicle_type || '').toLowerCase();
+      const idStr = String(rec.id);
+      return (
+        veh.includes(query) ||
+        slotNum.includes(query) ||
+        owner.includes(query) ||
+        type.includes(query) ||
+        idStr.includes(query)
+      );
+    });
+  }, [searchTerm, records]);
 
   // Filter active table records
   const filteredActiveRecords = activeRecords.filter((rec) => {
-    const search = searchTerm.toLowerCase();
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase().trim();
     const veh = (rec.vehicle_no || '').toLowerCase();
-    const slotNum = (rec.slots?.slot_number || '').toLowerCase();
+    const slotNum = (rec.slots?.slot_number || String(rec.slot_id) || '').toLowerCase();
     const owner = (rec.owner_name || '').toLowerCase();
     return veh.includes(search) || slotNum.includes(search) || owner.includes(search);
   });
 
-  // Filter slots for search or show all
+  // Filter slots for search
   const filteredSlots = slots.filter((slot) => {
-    if (!searchTerm) return true;
-    return slot.slot_number.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!searchTerm.trim()) return true;
+    return slot.slot_number.toLowerCase().includes(searchTerm.toLowerCase().trim());
   });
 
   // Recent 5 activities
@@ -88,7 +123,6 @@ export default function DashboardPage() {
       }
     });
 
-    // Provide lively minimum values if empty for visual clarity
     return timeSlots.map((slot) => ({
       ...slot,
       entries: slot.entries || Math.floor(Math.random() * 2) + 1,
@@ -134,27 +168,124 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 p-5 md:p-8 bg-[#f5f5fb] min-h-screen">
-      {/* Topbar */}
+      {/* Topbar with Global Search */}
       <div className="flex flex-wrap justify-between items-center gap-5 mb-7">
         <h1 className="text-[#4338ca] text-3xl md:text-[38px] font-extrabold tracking-tight">
           Parking Central
         </h1>
+
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center bg-white px-4 py-3 rounded-2xl w-72 md:w-80 border border-gray-200 shadow-xs">
-            <i className="fa-solid fa-magnifying-glass text-gray-400 mr-3 text-sm"></i>
-            <input
-              type="text"
-              placeholder="Search vehicles or slots..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="border-none outline-none w-full bg-transparent text-[15px] text-gray-700 placeholder-gray-400"
-            />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm('')} className="text-gray-400 hover:text-gray-600">
-                <i className="fa-solid fa-xmark text-sm"></i>
-              </button>
+          {/* Enhanced Search Container */}
+          <div ref={searchContainerRef} className="relative">
+            <div className="flex items-center bg-white px-4 py-3 rounded-2xl w-72 sm:w-96 md:w-[440px] border border-gray-200 shadow-xs focus-within:ring-2 focus-within:ring-[#4f46e5] focus-within:border-transparent transition">
+              <i className="fa-solid fa-magnifying-glass text-indigo-600 mr-3 text-base"></i>
+              <input
+                type="text"
+                placeholder="Search plate no, vehicle type, owner, slot..."
+                value={searchTerm}
+                onFocus={() => setIsSearchFocused(true)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setIsSearchFocused(true);
+                }}
+                className="border-none outline-none w-full bg-transparent text-[15px] text-gray-800 placeholder-gray-400 font-medium"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setIsSearchFocused(false);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+                >
+                  <i className="fa-solid fa-xmark text-sm"></i>
+                </button>
+              )}
+            </div>
+
+            {/* Quick Live Search Results Dropdown */}
+            {isSearchFocused && searchTerm.trim().length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden max-h-[420px] overflow-y-auto animate-in fade-in slide-in-from-top-2">
+                <div className="p-3.5 bg-indigo-50/70 border-b border-indigo-100 flex justify-between items-center text-xs">
+                  <span className="font-bold text-indigo-900">
+                    <i className="fa-solid fa-clock-rotate-left mr-1.5 text-indigo-600"></i>
+                    Found {matchedHistoryRecords.length} Parking Records for "{searchTerm}"
+                  </span>
+                  <span className="text-gray-500">History & Active</span>
+                </div>
+
+                {matchedHistoryRecords.length === 0 ? (
+                  <div className="p-6 text-center text-gray-400 text-sm italic">
+                    <i className="fa-regular fa-folder-open text-2xl mb-2 block opacity-60"></i>
+                    No vehicle plate or history records found matching "{searchTerm}"
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {matchedHistoryRecords.slice(0, 8).map((rec) => (
+                      <div
+                        key={rec.id}
+                        onClick={() => {
+                          setSelectedRecordForDetail(rec);
+                          setIsSearchFocused(false);
+                        }}
+                        className="p-3.5 hover:bg-indigo-50/50 transition cursor-pointer flex items-center justify-between gap-3 group"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-gray-100 group-hover:bg-indigo-100 flex items-center justify-center text-indigo-700 transition">
+                            <i
+                              className={`text-sm ${
+                                rec.vehicle_type?.toLowerCase().includes('bike')
+                                  ? 'fa-solid fa-motorcycle'
+                                  : 'fa-solid fa-car'
+                              }`}
+                            ></i>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-gray-900 text-sm">{rec.vehicle_no}</span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                  rec.status === 'active'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-emerald-100 text-emerald-700'
+                                }`}
+                              >
+                                {rec.status === 'active' ? 'Parked' : 'Completed'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              Slot: <strong className="text-indigo-600">{rec.slots?.slot_number || rec.slot_id || '-'}</strong>
+                              {rec.owner_name ? ` • Owner: ${rec.owner_name}` : ''}
+                              {rec.entry_time ? ` • ${new Date(rec.entry_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-xs font-bold text-gray-800 block">
+                            ₹{rec.total_amount || (rec.status === 'active' ? 'Calculating...' : 0)}
+                          </span>
+                          <span className="text-[11px] text-indigo-600 font-semibold group-hover:underline">
+                            View Pass <i className="fa-solid fa-chevron-right text-[9px] ml-0.5"></i>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {matchedHistoryRecords.length > 8 && (
+                      <div
+                        onClick={() => setCurrentPage('history')}
+                        className="p-3 text-center text-xs font-bold text-indigo-600 bg-gray-50 hover:bg-indigo-50 transition cursor-pointer"
+                      >
+                        View all {matchedHistoryRecords.length} records in History &rarr;
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
+
           <button
             onClick={() => setIsModalOpen(true)}
             className="bg-[#4f46e5] hover:bg-[#4338ca] text-white px-5 py-3 rounded-2xl font-bold text-[15px] transition shadow-md shadow-indigo-100 cursor-pointer flex items-center gap-2"
@@ -163,6 +294,31 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {/* Search Filter Banner if active */}
+      {searchTerm.trim().length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 mb-6 flex flex-wrap justify-between items-center gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs">
+              <i className="fa-solid fa-filter"></i>
+            </span>
+            <div>
+              <p className="text-sm font-bold text-indigo-950">
+                Filtered Search: <span className="underline font-extrabold">"{searchTerm}"</span>
+              </p>
+              <p className="text-xs text-indigo-700">
+                Found {filteredActiveRecords.length} active parking(s) and {matchedHistoryRecords.length} total historical records.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setSearchTerm('')}
+            className="bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer"
+          >
+            Clear Search
+          </button>
+        </div>
+      )}
 
       {/* Overview Header */}
       <div className="mb-6">
@@ -230,7 +386,7 @@ export default function DashboardPage() {
       {/* RECHARTS DATA VISUALIZATION SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 my-6">
         {/* Left 2 Cols: Real-Time Flow & Activity Charts */}
-        <div className="lg:col-span-2 bg-white rounded-[22px] p-6 border border-[#e5e5ef] shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-white rounded-[22px] p-6 border border-[#e5e7eb] shadow-xs flex flex-col justify-between">
           <div className="flex flex-wrap justify-between items-center mb-6 gap-3">
             <div>
               <h2 className="text-xl font-bold text-gray-900">
@@ -524,12 +680,19 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Table Section */}
+      {/* Table Section: Active Parkings */}
       <div className="bg-white rounded-[20px] p-6 border border-[#e5e5ef] shadow-xs overflow-hidden mt-6">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-          <h2 className="text-xl font-bold text-gray-900">Current Active Parkings</h2>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Current Active Parkings</h2>
+            {searchTerm && (
+              <p className="text-xs text-indigo-600 mt-0.5 font-medium">
+                Showing search results matching "{searchTerm}"
+              </p>
+            )}
+          </div>
           <div className="bg-[#fee2e2] text-[#dc2626] font-bold text-xs px-3.5 py-1.5 rounded-full">
-            {activeRecords.length} Active Vehicles
+            {filteredActiveRecords.length} Active Vehicles
           </div>
         </div>
 
@@ -548,13 +711,22 @@ export default function DashboardPage() {
               {filteredActiveRecords.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-gray-400 italic">
-                    No active parked vehicles matching your search.
+                    {searchTerm
+                      ? `No active parked vehicles matching "${searchTerm}". (Check historical search dropdown above)`
+                      : 'No active parked vehicles currently.'}
                   </td>
                 </tr>
               ) : (
                 filteredActiveRecords.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50/80 transition-colors">
-                    <td className="p-4 font-bold text-gray-800">{item.vehicle_no}</td>
+                  <tr
+                    key={item.id}
+                    onClick={() => setSelectedRecordForDetail(item)}
+                    className="hover:bg-indigo-50/50 transition-colors cursor-pointer"
+                  >
+                    <td className="p-4 font-bold text-gray-800 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span>{item.vehicle_no}</span>
+                    </td>
                     <td className="p-4 font-semibold text-[#4f46e5]">
                       {item.slots?.slot_number || item.slot_id || '-'}
                     </td>
@@ -577,6 +749,13 @@ export default function DashboardPage() {
 
       {/* New Entry Fast Modal */}
       <NewEntryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+      {/* Record Details Modal */}
+      <RecordDetailsModal
+        isOpen={Boolean(selectedRecordForDetail)}
+        onClose={() => setSelectedRecordForDetail(null)}
+        record={selectedRecordForDetail}
+      />
     </div>
   );
 }

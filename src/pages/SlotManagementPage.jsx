@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useParking } from '../context/ParkingContext.jsx';
 import AddSlotModal from '../components/AddSlotModal.jsx';
+import EditRatesModal from '../components/EditRatesModal.jsx';
+import NewEntryModal from '../components/NewEntryModal.jsx';
 
 export default function SlotManagementPage() {
   const {
@@ -9,6 +11,8 @@ export default function SlotManagementPage() {
     releaseSlot,
     toggleMaintenance,
     resetZoneSlots,
+    rates,
+    setPreselectedSlotId,
   } = useParking();
 
   const [activeZone, setActiveZone] = useState('Zone A');
@@ -16,6 +20,8 @@ export default function SlotManagementPage() {
   const [selectedSlotId, setSelectedSlotId] = useState(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
+  const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
 
   // Filter slots for current zone and floor
   const zoneFloorSlots = slots.filter((slot) => {
@@ -51,7 +57,6 @@ export default function SlotManagementPage() {
       )
     ) {
       await releaseSlot(selectedSlot.id);
-      alert('Slot Released Successfully!');
     }
   };
 
@@ -65,8 +70,16 @@ export default function SlotManagementPage() {
   const handleResetZone = () => {
     if (window.confirm(`Reset all slots in ${activeZone} to Available?`)) {
       resetZoneSlots(activeZone);
-      alert(`${activeZone} slots reset to available.`);
     }
+  };
+
+  // Quick park in selected slot
+  const handleQuickParkHere = () => {
+    if (!selectedSlot) return;
+    if (setPreselectedSlotId) {
+      setPreselectedSlotId(selectedSlot.id);
+    }
+    setIsQuickEntryOpen(true);
   };
 
   return (
@@ -92,10 +105,12 @@ export default function SlotManagementPage() {
               className="bg-gray-100 pl-9 pr-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-64"
             />
           </div>
-          <button className="text-gray-400 hover:text-gray-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
+          <button
+            onClick={() => setIsRatesModalOpen(true)}
+            title="Configure Rates"
+            className="text-gray-500 hover:text-indigo-600 p-1.5 rounded-lg hover:bg-gray-100 transition cursor-pointer"
+          >
+            <i className="fa-solid fa-sliders text-lg"></i>
           </button>
           <img
             src="https://ui-avatars.com/api/?name=Admin+User&background=1e1b4b&color=fff"
@@ -340,7 +355,17 @@ export default function SlotManagementPage() {
 
             {/* ACTION BUTTONS */}
             {selectedSlot && (
-              <div className="mt-7 space-y-3">
+              <div className="mt-7 space-y-2.5">
+                {selectedSlot.status === 'available' && (
+                  <button
+                    onClick={handleQuickParkHere}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg shadow-md shadow-emerald-100 transition flex items-center justify-center cursor-pointer text-sm"
+                  >
+                    <i className="fa-solid fa-car-side mr-2"></i>
+                    Park Vehicle in This Slot
+                  </button>
+                )}
+
                 {selectedSlot.status === 'occupied' && (
                   <button
                     onClick={handleRelease}
@@ -372,9 +397,12 @@ export default function SlotManagementPage() {
           <div className="p-6 border-b border-gray-100">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-gray-800">Rates</h3>
-              <span className="text-xs text-indigo-600 font-semibold cursor-pointer hover:underline">
-                Standard Tier
-              </span>
+              <button
+                onClick={() => setIsRatesModalOpen(true)}
+                className="text-xs text-indigo-600 font-semibold cursor-pointer hover:underline flex items-center gap-1"
+              >
+                <i className="fa-solid fa-pen-to-square text-[10px]"></i> Edit
+              </button>
             </div>
             <ul className="space-y-3 text-sm">
               <li className="flex justify-between items-center">
@@ -384,7 +412,7 @@ export default function SlotManagementPage() {
                   </svg>
                   Standard
                 </span>
-                <span className="font-bold text-gray-800">₹40.00/hr</span>
+                <span className="font-bold text-gray-800">₹{(rates?.standard || 40).toFixed(2)}/hr</span>
               </li>
               <li className="flex justify-between items-center">
                 <span className="flex items-center text-gray-600">
@@ -393,7 +421,7 @@ export default function SlotManagementPage() {
                   </svg>
                   EV Premium
                 </span>
-                <span className="font-bold text-indigo-600">₹75.00/hr</span>
+                <span className="font-bold text-indigo-600">₹{(rates?.ev || 75).toFixed(2)}/hr</span>
               </li>
               <li className="flex justify-between items-center">
                 <span className="flex items-center text-gray-600">
@@ -402,7 +430,7 @@ export default function SlotManagementPage() {
                   </svg>
                   Handicap
                 </span>
-                <span className="font-bold text-indigo-600">₹20.00/hr</span>
+                <span className="font-bold text-indigo-600">₹{(rates?.handicap || 20).toFixed(2)}/hr</span>
               </li>
             </ul>
           </div>
@@ -440,6 +468,18 @@ export default function SlotManagementPage() {
         onClose={() => setIsAddModalOpen(false)}
         defaultZone={activeZone}
         defaultFloor={selectedFloor}
+      />
+
+      {/* Configure Rates Modal */}
+      <EditRatesModal
+        isOpen={isRatesModalOpen}
+        onClose={() => setIsRatesModalOpen(false)}
+      />
+
+      {/* Quick Entry Modal */}
+      <NewEntryModal
+        isOpen={isQuickEntryOpen}
+        onClose={() => setIsQuickEntryOpen(false)}
       />
     </div>
   );

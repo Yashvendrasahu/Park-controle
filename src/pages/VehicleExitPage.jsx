@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParking } from '../context/ParkingContext.jsx';
 import PrintSlipModal from '../components/PrintSlipModal.jsx';
+import confetti from 'canvas-confetti';
 
 export default function VehicleExitPage() {
-  const { records, exitVehicle, activeRecords } = useParking();
+  const { records, exitVehicle, activeRecords, rates } = useParking();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [currentRecord, setCurrentRecord] = useState(null);
-  const [selectedRateType, setSelectedRateType] = useState('car'); // 'bike' or 'car'
+  const [selectedRateType, setSelectedRateType] = useState('car'); // 'bike' or 'car' or 'ev'
   const [currentTimeStr, setCurrentTimeStr] = useState('');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -23,10 +24,19 @@ export default function VehicleExitPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Calculate durations and fee
+  // Calculate durations and rate per minute
   let entryDate = null;
   let totalMinutes = 0;
-  let rateMultiplier = selectedRateType === 'bike' ? 1 : 2;
+  
+  // Convert hourly rate to per-minute rate
+  let rateMultiplier = 2.0;
+  if (selectedRateType === 'bike') {
+    rateMultiplier = Number((rates?.bike ? rates.bike / 60 : 1.0).toFixed(2));
+  } else if (selectedRateType === 'ev') {
+    rateMultiplier = Number((rates?.ev ? rates.ev / 60 : 2.5).toFixed(2));
+  } else {
+    rateMultiplier = Number((rates?.standard ? rates.standard / 60 : 2.0).toFixed(2));
+  }
 
   if (currentRecord && currentRecord.entry_time) {
     entryDate = new Date(currentRecord.entry_time);
@@ -34,8 +44,8 @@ export default function VehicleExitPage() {
     totalMinutes = Math.max(1, Math.floor(diffMs / 60000));
   }
 
-  const baseMultiplierText = `x ₹${rateMultiplier.toFixed(2)}`;
-  const totalAmount = totalMinutes * rateMultiplier;
+  const baseMultiplierText = `x ₹${rateMultiplier} / min`;
+  const totalAmount = Math.max(10, Math.round(totalMinutes * rateMultiplier));
 
   // Search logic
   const handleSearch = (targetQuery) => {
@@ -55,8 +65,11 @@ export default function VehicleExitPage() {
 
     if (found) {
       setCurrentRecord(found);
-      if (found.vehicle_type?.toLowerCase().includes('bike')) {
+      const type = found.vehicle_type?.toLowerCase() || '';
+      if (type.includes('bike')) {
         setSelectedRateType('bike');
+      } else if (type.includes('ev')) {
+        setSelectedRateType('ev');
       } else {
         setSelectedRateType('car');
       }
@@ -65,7 +78,7 @@ export default function VehicleExitPage() {
     }
   };
 
-  // Confirm Exit
+  // Confirm Exit with Confetti
   const handleConfirmExit = async () => {
     if (!currentRecord) {
       alert('Search and select a vehicle first.');
@@ -81,9 +94,15 @@ export default function VehicleExitPage() {
     });
     setIsProcessing(false);
 
-    alert(`Vehicle ${currentRecord.vehicle_no} Exit Completed!\nTotal Settled: ₹${totalAmount.toFixed(2)}`);
-    setCurrentRecord(null);
-    setSearchQuery('');
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch (e) {}
+
+    setIsPrintModalOpen(true);
   };
 
   return (
@@ -106,10 +125,10 @@ export default function VehicleExitPage() {
             />
           </div>
           <div className="flex items-center gap-4 text-gray-600 ml-2">
-            <button className="hover:text-[#4338ca] text-2xl">
+            <button className="hover:text-[#4338ca] text-2xl cursor-pointer">
               <i className="fa-regular fa-bell"></i>
             </button>
-            <button className="hover:text-[#4338ca] text-2xl">
+            <button className="hover:text-[#4338ca] text-2xl cursor-pointer">
               <i className="fa-solid fa-gear"></i>
             </button>
           </div>
@@ -249,7 +268,7 @@ export default function VehicleExitPage() {
               >
                 <div>
                   <h3 className="font-bold text-gray-800 text-[16px]">Bike Rate</h3>
-                  <p className="text-gray-500 text-xs">₹1 per min</p>
+                  <p className="text-gray-500 text-xs">₹{(rates?.bike ? rates.bike / 60 : 1.0).toFixed(2)}/min (₹{rates?.bike || 20}/hr)</p>
                 </div>
                 <input
                   type="radio"
@@ -268,8 +287,8 @@ export default function VehicleExitPage() {
                 }`}
               >
                 <div>
-                  <h3 className="font-bold text-gray-800 text-[16px]">Car Rate</h3>
-                  <p className="text-gray-500 text-xs">₹2 per min</p>
+                  <h3 className="font-bold text-gray-800 text-[16px]">Car / Sedan Rate</h3>
+                  <p className="text-gray-500 text-xs">₹{(rates?.standard ? rates.standard / 60 : 2.0).toFixed(2)}/min (₹{rates?.standard || 40}/hr)</p>
                 </div>
                 <input
                   type="radio"
@@ -279,20 +298,40 @@ export default function VehicleExitPage() {
                   className="w-5 h-5 text-indigo-600 cursor-pointer accent-[#5b5ce9]"
                 />
               </div>
+
+              {/* EV Rate */}
+              <div
+                onClick={() => setSelectedRateType('ev')}
+                className={`p-4 rounded-[18px] flex justify-between items-center cursor-pointer transition border-2 ${
+                  selectedRateType === 'ev' ? 'border-[#5b5ce9] bg-indigo-50/60' : 'border-transparent bg-[#f5f4fb]'
+                }`}
+              >
+                <div>
+                  <h3 className="font-bold text-gray-800 text-[16px]">EV Premium Charging</h3>
+                  <p className="text-gray-500 text-xs">₹{(rates?.ev ? rates.ev / 60 : 2.5).toFixed(2)}/min (₹{rates?.ev || 75}/hr)</p>
+                </div>
+                <input
+                  type="radio"
+                  name="rateSelect"
+                  checked={selectedRateType === 'ev'}
+                  onChange={() => setSelectedRateType('ev')}
+                  className="w-5 h-5 text-indigo-600 cursor-pointer accent-[#5b5ce9]"
+                />
+              </div>
             </div>
 
             <div className="mt-6 space-y-3.5 text-sm">
               <div className="flex justify-between text-gray-700 text-[15px]">
-                <span>Total Minutes</span>
+                <span>Total Duration</span>
                 <span className="font-semibold text-gray-900">{totalMinutes} mins</span>
               </div>
               <div className="flex justify-between text-gray-700 text-[15px]">
-                <span>Base Multiplier</span>
+                <span>Base Tariff</span>
                 <span className="font-semibold text-gray-900">{baseMultiplierText}</span>
               </div>
               <div className="flex justify-between text-gray-700 text-[15px]">
                 <span>Tax (SGST/CGST)</span>
-                <span className="font-semibold text-gray-900">₹0</span>
+                <span className="font-semibold text-gray-900">₹0.00</span>
               </div>
 
               <div className="border-t border-gray-200 pt-5 mt-4">
@@ -321,7 +360,7 @@ export default function VehicleExitPage() {
               className="w-full bg-[#4338ca] hover:bg-[#312e81] text-white py-4 rounded-[16px] font-bold text-[16px] transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 disabled:opacity-50"
             >
               <i className="fa-regular fa-circle-check text-xl"></i>
-              <span>{isProcessing ? 'Processing Exit...' : 'Confirm Payment & Exit'}</span>
+              <span>{isProcessing ? 'Settling Payment...' : 'Confirm Payment & Exit'}</span>
             </button>
 
             <div className="flex gap-3">
@@ -361,7 +400,7 @@ export default function VehicleExitPage() {
               <i className="fa-solid fa-triangle-exclamation mr-1.5 text-orange-600"></i>
               Vehicle exit logic assumes immediate departure post-payment.
             </strong>
-            Tickets are valid for 15 minutes after fee settlement.
+            Tickets are valid for 15 minutes after fee settlement at exit boom barrier.
           </div>
         </div>
       </div>
@@ -369,7 +408,11 @@ export default function VehicleExitPage() {
       {/* Print Slip Modal */}
       <PrintSlipModal
         isOpen={isPrintModalOpen}
-        onClose={() => setIsPrintModalOpen(false)}
+        onClose={() => {
+          setIsPrintModalOpen(false);
+          setCurrentRecord(null);
+          setSearchQuery('');
+        }}
         record={currentRecord}
         totalMinutes={totalMinutes}
         totalAmount={totalAmount.toFixed(2)}

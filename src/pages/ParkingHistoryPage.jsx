@@ -7,6 +7,7 @@ export default function ParkingHistoryPage() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'car', 'bike'
+  const [dateRange, setDateRange] = useState('Today'); // 'Today', 'Yesterday', 'Last 7 Days', 'All Time'
   const [currentPageNum, setCurrentPageNum] = useState(1);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
@@ -21,7 +22,9 @@ export default function ParkingHistoryPage() {
     const veh = (item.vehicle_no || '').toLowerCase();
     const type = (item.vehicle_type || '').toLowerCase();
     const owner = (item.owner_name || '').toLowerCase();
-    const matchesSearch = veh.includes(search) || type.includes(search) || owner.includes(search);
+    const slot = (item.slots?.slot_number || String(item.slot_id) || '').toLowerCase();
+    const matchesSearch =
+      veh.includes(search) || type.includes(search) || owner.includes(search) || slot.includes(search);
 
     // Tab filter
     let matchesTab = true;
@@ -37,7 +40,20 @@ export default function ParkingHistoryPage() {
       matchesStatus = item.status === statusFilter;
     }
 
-    return matchesSearch && matchesTab && matchesStatus;
+    // Date range filter
+    let matchesDate = true;
+    if (dateRange !== 'All Time' && item.entry_time) {
+      const entryD = new Date(item.entry_time);
+      const now = new Date();
+      if (dateRange === 'Today') {
+        matchesDate = entryD.toDateString() === now.toDateString();
+      } else if (dateRange === 'Last 7 Days') {
+        const diffDays = (now - entryD) / (1000 * 60 * 60 * 24);
+        matchesDate = diffDays <= 7;
+      }
+    }
+
+    return matchesSearch && matchesTab && matchesStatus && matchesDate;
   });
 
   // Pagination slice
@@ -47,7 +63,6 @@ export default function ParkingHistoryPage() {
     currentPageNum * itemsPerPage
   );
 
-  // Badge class helper
   const getBadgeClass = (typeStr = '') => {
     const t = typeStr.toLowerCase();
     if (t.includes('bike')) return 'bg-[#fed7aa] text-[#92400e]';
@@ -64,7 +79,7 @@ export default function ParkingHistoryPage() {
           <i className="fa-solid fa-magnifying-glass text-indigo-700 mr-3 text-lg"></i>
           <input
             type="text"
-            placeholder="Search vehicle history..."
+            placeholder="Search vehicle history, slot, owner..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -80,10 +95,10 @@ export default function ParkingHistoryPage() {
         </div>
 
         <div className="flex items-center gap-5">
-          <button className="text-gray-600 hover:text-[#4338ca] text-2xl">
+          <button className="text-gray-600 hover:text-[#4338ca] text-2xl cursor-pointer">
             <i className="fa-regular fa-bell"></i>
           </button>
-          <button className="text-gray-600 hover:text-[#4338ca] text-2xl">
+          <button className="text-gray-600 hover:text-[#4338ca] text-2xl cursor-pointer">
             <i className="fa-solid fa-gear"></i>
           </button>
           <div className="w-[1px] h-[30px] bg-gray-300"></div>
@@ -123,34 +138,51 @@ export default function ParkingHistoryPage() {
       {/* ADVANCED FILTER POPUP DRAWER IF TOGGLED */}
       {showFiltersModal && (
         <div className="bg-white p-5 rounded-2xl border border-indigo-200 mb-6 shadow-sm animate-in fade-in duration-200 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-xs font-bold uppercase text-gray-500">Filter By Status:</span>
-            <div className="flex gap-2">
-              {['all', 'active', 'completed'].map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase cursor-pointer transition ${
-                    statusFilter === status
-                      ? 'bg-[#4338ca] text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
-                >
-                  {status}
-                </button>
-              ))}
+          <div className="flex items-center gap-6 flex-wrap">
+            <div>
+              <span className="text-xs font-bold uppercase text-gray-500 block mb-1">Status:</span>
+              <div className="flex gap-2">
+                {['all', 'active', 'completed'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold uppercase cursor-pointer transition ${
+                      statusFilter === status
+                        ? 'bg-[#4338ca] text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-xs font-bold uppercase text-gray-500 block mb-1">Date Range:</span>
+              <select
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value)}
+                className="bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+              >
+                <option value="Today">Today</option>
+                <option value="Last 7 Days">Last 7 Days</option>
+                <option value="All Time">All Time</option>
+              </select>
             </div>
           </div>
+
           <button
             onClick={() => {
               setStatusFilter('all');
+              setDateRange('All Time');
               setActiveTab('all');
               setSearchTerm('');
               setShowFiltersModal(false);
             }}
-            className="text-xs font-semibold text-red-600 hover:underline"
+            className="text-xs font-semibold text-red-600 hover:underline cursor-pointer"
           >
-            Reset Filters
+            Reset All Filters
           </button>
         </div>
       )}
@@ -201,8 +233,11 @@ export default function ParkingHistoryPage() {
             </button>
           </div>
 
-          <div className="text-sm text-gray-600 font-medium">
-            <strong>Date Range:</strong> Today
+          <div className="text-sm text-gray-600 font-medium flex items-center gap-2">
+            <span><strong>Date Range:</strong> {dateRange}</span>
+            <span className="text-xs text-indigo-600 font-bold bg-indigo-50 px-2.5 py-1 rounded-full">
+              {filteredRecords.length} Records
+            </span>
           </div>
         </div>
 
@@ -248,7 +283,7 @@ export default function ParkingHistoryPage() {
                       {item.exit_time ? (
                         <span className="text-gray-600">{new Date(item.exit_time).toLocaleString()}</span>
                       ) : (
-                        <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded">
+                        <span className="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full">
                           ACTIVE
                         </span>
                       )}

@@ -5,12 +5,18 @@ const ParkingContext = createContext(null);
 
 export const ParkingProvider = ({ children }) => {
   const [currentPage, setCurrentPage] = useState('dashboard');
+  const [preselectedSlotId, setPreselectedSlotId] = useState(null);
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('parkcontrol_user');
     return saved ? JSON.parse(saved) : null;
   });
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('parkcontrol_auth') === 'true';
+  });
+
+  const [rates, setRates] = useState(() => {
+    const saved = localStorage.getItem('parkcontrol_rates');
+    return saved ? JSON.parse(saved) : { standard: 40, bike: 20, ev: 75, handicap: 20 };
   });
 
   const [slots, setSlots] = useState(() => {
@@ -23,9 +29,25 @@ export const ParkingProvider = ({ children }) => {
     return cached ? JSON.parse(cached) : INITIAL_RECORDS;
   });
 
+  const [toasts, setToasts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [supabaseConnected, setSupabaseConnected] = useState(true);
   const [lastSynced, setLastSynced] = useState(new Date());
+
+  // Toast Helper
+  const showToast = useCallback((message, type = 'success') => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const updateRates = (newRates) => {
+    setRates(newRates);
+    localStorage.setItem('parkcontrol_rates', JSON.stringify(newRates));
+    showToast('Parking tariff rates updated!', 'success');
+  };
 
   // Check Supabase Auth State
   useEffect(() => {
@@ -125,7 +147,6 @@ export const ParkingProvider = ({ children }) => {
         setRecords(joinedRecords);
         setSupabaseConnected(true);
       } else {
-        // Fallback to flat select in case join foreign key is not created in Supabase
         const { data: flatRecords, error: flatErr } = await supabase
           .from('parking_records')
           .select('*')
@@ -154,7 +175,7 @@ export const ParkingProvider = ({ children }) => {
     }
   }, [slots]);
 
-  // Realtime subscription to live Supabase changes
+  // Realtime subscription
   useEffect(() => {
     fetchSupabaseData();
 
@@ -227,6 +248,7 @@ export const ParkingProvider = ({ children }) => {
       setIsAuthenticated(true);
       localStorage.setItem('parkcontrol_user', JSON.stringify(loggedUser));
       localStorage.setItem('parkcontrol_auth', 'true');
+      showToast(`Welcome back, ${loggedUser.name}!`, 'success');
       return { success: true, user: loggedUser };
     } catch (err) {
       return { success: false, error: err.message || 'Authentication failed' };
@@ -243,9 +265,10 @@ export const ParkingProvider = ({ children }) => {
     setIsAuthenticated(false);
     setUser(null);
     setCurrentPage('login');
+    showToast('Logged out successfully', 'info');
   };
 
-  // Dynamic Add Vehicle Entry (Insert in Supabase & Update Slot)
+  // Dynamic Add Vehicle Entry
   const addVehicle = async ({ vehicleNo, vehicleType, ownerName, slotId }) => {
     const numericSlotId = Number(slotId);
     const assignedSlot = slots.find((s) => s.id === numericSlotId || s.id === slotId);
@@ -266,11 +289,12 @@ export const ParkingProvider = ({ children }) => {
       slots: { slot_number: slotNumber },
     };
 
-    // Update local state immediately
     setRecords((prev) => [optimisticRecord, ...prev]);
     setSlots((prev) =>
       prev.map((s) => (s.id === numericSlotId || s.id === slotId ? { ...s, status: 'occupied' } : s))
     );
+
+    showToast(`Vehicle ${optimisticRecord.vehicle_no} assigned to Slot ${slotNumber}!`, 'success');
 
     // Sync to Supabase DB
     try {
@@ -290,13 +314,12 @@ export const ParkingProvider = ({ children }) => {
         .single();
 
       if (!insertErr && insertedRecord) {
+        const fullRec = { ...insertedRecord, slots: { slot_number: slotNumber } };
         setRecords((prev) =>
-          prev.map((r) =>
-            r.id === optimisticRecord.id
-              ? { ...insertedRecord, slots: { slot_number: slotNumber } }
-              : r
-          )
+          prev.map((r) => (r.id === optimisticRecord.id ? fullRec : r))
         );
+        await supabase.from('slots').update({ status: 'occupied' }).eq('id', numericSlotId);
+        return { success: true, record: fullRec };
       }
 
       await supabase.from('slots').update({ status: 'occupied' }).eq('id', numericSlotId);
@@ -304,7 +327,7 @@ export const ParkingProvider = ({ children }) => {
       console.warn('Supabase insert note:', e);
     }
 
-    return { success: true };
+    return { success: true, record: optimisticRecord };
   };
 
   // Dynamic Confirm Vehicle Exit & Fee Settlement
@@ -331,6 +354,8 @@ export const ParkingProvider = ({ children }) => {
         prev.map((s) => (s.id === slotId || s.id === Number(slotId) ? { ...s, status: 'available' } : s))
       );
     }
+
+    showToast(`Payment of ₹${totalAmount} settled & vehicle exited!`, 'success');
 
     // Direct Supabase Update
     try {
@@ -403,9 +428,11 @@ export const ParkingProvider = ({ children }) => {
     try {
       await supabase.from('slots').update({ status: 'available' }).eq('id', numericSlotId);
     } catch (e) {}
+
+    showToast('Slot released successfully!', 'success');
   };
 
-  // Dynamic Toggle Maintenance in Supabase
+  // Dynamic Toggle Maintenance
   const toggleMaintenance = async (slotId) => {
     const numericSlotId = Number(slotId);
     let newStatus = 'maintenance';
@@ -422,10 +449,11 @@ export const ParkingProvider = ({ children }) => {
       await supabase.from('slots').update({ status: newStatus }).eq('id', numericSlotId);
     } catch (e) {}
 
+    showToast(`Slot status changed to ${newStatus}`, 'info');
     return newStatus;
   };
 
-  // Dynamic Add New Slot in Supabase
+  // Dynamic Add New Slot
   const addSlot = async ({ slotNumber, zone, floor, slotType }) => {
     const newSlot = {
       slot_number: slotNumber.toUpperCase().trim(),
@@ -451,6 +479,7 @@ export const ParkingProvider = ({ children }) => {
       setSlots((prev) => [...prev, { ...newSlot, id: Date.now() }]);
     }
 
+    showToast(`New Slot ${newSlot.slot_number} added!`, 'success');
     return { success: true };
   };
 
@@ -462,6 +491,7 @@ export const ParkingProvider = ({ children }) => {
     try {
       await supabase.from('slots').update({ status: 'available' }).eq('zone', zone);
     } catch (e) {}
+    showToast(`All slots in ${zone} reset to Available`, 'info');
   };
 
   // Dynamic Export CSV
@@ -484,6 +514,7 @@ export const ParkingProvider = ({ children }) => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showToast('Parking history CSV exported!', 'success');
   };
 
   // Computed Real-Time Stats
@@ -502,8 +533,14 @@ export const ParkingProvider = ({ children }) => {
       value={{
         currentPage,
         setCurrentPage,
+        preselectedSlotId,
+        setPreselectedSlotId,
         user,
         isAuthenticated,
+        rates,
+        updateRates,
+        toasts,
+        showToast,
         login,
         logout,
         slots,
